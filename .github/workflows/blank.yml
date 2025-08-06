@@ -1,13 +1,20 @@
 name: Mirror Mindustry Itch Builds
 
 on:
+  # 每天定时（UTC 0点）
   schedule:
-    - cron: '0 0 * * *'  # 每天 UTC 0 点（北京时间 08:00）
+    - cron: '0 0 * * *'
+
+  # 支持手动点击触发
   workflow_dispatch:
+
+  # 每次 push 自动运行
+  push:
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -17,21 +24,21 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
+      - name: Install Puppeteer
         run: npm install puppeteer
 
-      - name: Run puppeteer to get all download links
+      - name: Run Puppeteer to collect download links
         run: node scrape-itch-downloads.js
 
       - name: Download all files
         run: |
-          mkdir downloads
+          mkdir -p downloads
           bash download.sh
 
       - name: Zip all builds
         run: zip -r itch-mirror.zip downloads
 
-      - name: Upload to release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: itch-mirror
