@@ -11,7 +11,6 @@ const path = require('path');
   const page = await browser.newPage();
   const downloadLinks = new Set();
 
-  // 监听资源请求，捕捉真实文件链接
   page.on('request', (request) => {
     const url = request.url();
     if (url.match(/\.(zip|jar|apk|exe|tar\.gz|dmg)(\?|$)/)) {
@@ -31,27 +30,30 @@ const path = require('path');
 
   console.log('Waiting for download buttons...');
   await page.waitForSelector('a.download_btn');
+  const buttonsCount = (await page.$$('a.download_btn')).length;
+  console.log(`Found ${buttonsCount} download buttons.`);
 
-  const buttons = await page.$$('a.download_btn');
-  console.log(`Found ${buttons.length} download buttons.`);
+  for (let i = 0; i < buttonsCount; i++) {
+    const buttons = await page.$$('a.download_btn');
+    const button = buttons[i];
+    if (!button) continue;
 
-  for (let i = 0; i < buttons.length; i++) {
     console.log(`Clicking download button ${i + 1}...`);
     try {
-      await buttons[i].click();
-      await new Promise(resolve => setTimeout(resolve, 3000)); // 替代 waitForTimeout
+      await button.click();
+      await new Promise(resolve => setTimeout(resolve, 3000));
     } catch (e) {
       console.warn(`Failed to click button ${i + 1}:`, e);
     }
   }
 
-  fs.writeFileSync(
-    'download.sh',
-    Array.from(downloadLinks)
-      .map((url, i) => `curl -L "${url}" -o downloads/file${i + 1}${path.extname(url.split('?')[0])}`)
-      .join('\n'),
-    'utf8'
-  );
+  // 保存为 download.sh
+  const lines = Array.from(downloadLinks).map((url, i) => {
+    const ext = path.extname(url.split('?')[0]);
+    return `curl -L "${url}" -o downloads/file${i + 1}${ext}`;
+  });
+
+  fs.writeFileSync('download.sh', lines.join('\n'), 'utf8');
 
   console.log(`Saved ${downloadLinks.size} download URLs to download.sh`);
 
