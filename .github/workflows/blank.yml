@@ -1,54 +1,40 @@
-name: Mirror Itch.io Builds
+name: Mirror Mindustry Itch Builds
 
 on:
-  # 每次 push（任意分支）
-  push:
-    branches:
-      - '*'
-
-  # 每天凌晨 00:00 UTC（北京时间 08:00）
   schedule:
-    - cron: '0 0 * * *'
-
-  # 手动触发（可选）
+    - cron: '0 0 * * *'  # 每天 UTC 0 点（北京时间 08:00）
   workflow_dispatch:
 
 jobs:
-  mirror-itch:
+  mirror:
     runs-on: ubuntu-latest
-    env:
-      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
-      ITCH_PROJECT: yourusername/mindustry
-      RELEASE_TAG: itch-mirror
-
     steps:
-      - name: Setup Git
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
-      - name: Install butler stable version
-        run: |
-          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/15.24.0/archive/default
-          unzip butler.zip
-          chmod +x butler
-          ./butler -V
-          sudo mv butler /usr/local/bin
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      - name: Download from Itch.io
-        run: |
-          mkdir itch-download
-          butler -j download "$ITCH_PROJECT" itch-download --headless
+      - name: Install dependencies
+        run: npm install puppeteer
 
-      - name: Archive files
-        run: |
-          cd itch-download
-          zip -r ../itch-artifact.zip .
+      - name: Run puppeteer to get all download links
+        run: node scrape-itch-downloads.js
 
-      - name: Upload artifact to Release
+      - name: Download all files
+        run: |
+          mkdir downloads
+          bash download.sh
+
+      - name: Zip all builds
+        run: zip -r itch-mirror.zip downloads
+
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          files: itch-artifact.zip
+          tag_name: itch-mirror
+          files: itch-mirror.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
