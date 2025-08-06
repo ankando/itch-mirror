@@ -15,14 +15,25 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Install Dependencies
+        run: sudo apt-get install -y tar
+
       - name: Install itchio-downloader
         run: |
-          # 下载最新版本并安装到 PATH
+          # 获取最新版本号
           LATEST_VERSION=$(curl -s "https://api.github.com/repos/BraedonWooding/itch-downloader/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          DOWNLOAD_URL="https://github.com/BraedonWooding/itch-downloader/releases/download/$LATEST_VERSION/itch-downloader-x86_64-unknown-linux-gnu"
-          curl -L -o itch-downloader "$DOWNLOAD_URL"
+          
+          # 下载并解压正确的版本
+          DOWNLOAD_URL="https://github.com/BraedonWooding/itch-downloader/releases/download/$LATEST_VERSION/itch-downloader-$LATEST_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          curl -L -o itch-downloader.tar.gz "$DOWNLOAD_URL"
+          
+          # 解压并安装
+          tar -xzf itch-downloader.tar.gz
           chmod +x itch-downloader
           sudo mv itch-downloader /usr/local/bin/
+          
+          # 验证安装
+          itch-downloader --version
 
       - name: Create Downloads Directory
         run: mkdir -p downloads
@@ -35,10 +46,17 @@ jobs:
             --author "anuke" \
             --title "Mindustry" \
             --output downloads \
-            --max-concurrent 4
+            --max-concurrent 4 \
+            --unzip  # 自动解压下载的文件
+
+      - name: List Downloaded Files
+        run: |
+          echo "下载的文件列表:"
+          find downloads -type f
 
       - name: Compress Downloads
         run: |
+          # 使用当前日期创建压缩包
           tar czvf mindustry-builds-$(date +%Y%m%d).tar.gz downloads/
           ls -lh *.tar.gz
 
@@ -53,4 +71,5 @@ jobs:
       - name: Cleanup
         run: |
           rm -rf downloads/
+          rm -f itch-downloader.tar.gz
           rm -f mindustry-builds-*.tar.gz
