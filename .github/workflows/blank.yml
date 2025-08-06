@@ -61,6 +61,6 @@ jobs:
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: Release v${{ steps.get_version.outputs.version }}
-          files: build/libs/*.jar
+          files: builds/anuke/mindustry/files/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
