@@ -3,78 +3,56 @@ name: Mirror Mindustry Itch Builds
 on:
   schedule:
     - cron: '0 0 * * *'  # 每天 UTC 0 点
-  workflow_dispatch:
   push:
-    paths:
-      - '.github/workflows/*.yml'
+  workflow_dispatch:
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout (fetch all tags)
         uses: actions/checkout@v4
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y tar unzip
-
-      - name: Download and Install itchio-downloader
-        run: |
-          # 获取最新版本号
-          LATEST_VERSION=$(curl -s "https://api.github.com/repos/BraedonWooding/itch-downloader/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "Latest version: $LATEST_VERSION"
-          
-          # 下载并解压
-          DOWNLOAD_URL="https://github.com/BraedonWooding/itch-downloader/releases/download/$LATEST_VERSION/itch-downloader-$LATEST_VERSION-x86_64-unknown-linux-gnu.tar.gz"
-          curl -L -o itch-downloader.tar.gz "$DOWNLOAD_URL"
-          
-          # 列出压缩包内容
-          tar -tzf itch-downloader.tar.gz
-          
-          # 提取并安装
-          tar -xzf itch-downloader.tar.gz
-          chmod +x itch-downloader
-          sudo mv itch-downloader /usr/local/bin/
-          
-          # 验证安装
-          itch-downloader --help
-
-      - name: Create Downloads Directory
-        run: mkdir -p downloads
-
-      - name: Download Mindustry Builds
-        env:
-          ITCH_API_KEY: ${{ secrets.ITCH_API_KEY }}  # 需要在仓库设置中添加此 secret
-        run: |
-          itch-downloader dl \
-            --author "anuke" \
-            --title "Mindustry" \
-            --output downloads \
-            --max-concurrent 4
-
-      - name: List Downloaded Files
-        run: |
-          echo "下载的文件列表:"
-          ls -lR downloads
-
-      - name: Create Release Archive
-        run: |
-          # 使用当前日期创建压缩包
-          tar czvf mindustry-builds-$(date +%Y%m%d).tar.gz downloads/
-          ls -lh *.tar.gz
-
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v2
         with:
-          tag_name: itch-mirror-${{ github.run_id }}
-          files: mindustry-builds-*.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Cleanup
+      - name: Install uv
         run: |
-          rm -rf downloads/
-          rm -f itch-downloader.tar.gz
-          rm -f mindustry-builds-*.tar.gz
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Download Itch.io Builds
+        env:
+          ITCH_API_KEY: ${{ secrets.ITCH_API_KEY }}
+        run: |
+          mkdir -p builds
+          cd builds
+          uvx itch-dl https://anuke.itch.io/mindustry --api-key "$ITCH_API_KEY"
+
+      - name: Prepare git repo for tag push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          # Clean workspace
+          rm -rf .git/index
+          git checkout --orphan temp-mirror
+
+          # Remove everything from index and working dir
+          git rm -rf . || true
+
+          # Copy new files into repo root
+          cp -r builds/anuke/mindustry/files/* ./
+
+          # Commit new files
+          git add .
+          git commit -m "Update itch-mirror from Itch.io"
+
+          # Delete old tag locally and remotely (optional but ensures cleanliness)
+          git tag -d itch-mirror || true
+          git push origin :refs/tags/itch-mirror || true
+
+          # Create new tag and push
+          git tag itch-mirror
+          git push origin itch-mirror --force
