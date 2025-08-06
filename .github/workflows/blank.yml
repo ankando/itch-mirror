@@ -42,7 +42,7 @@ jobs:
           git checkout --orphan temp-mirror
 
           rm -rf *
-          cp -r builds/* ./
+          cp builds/anuke/mindustry/files/* ./
 
       - name: Commit and push to tag
         run: |
