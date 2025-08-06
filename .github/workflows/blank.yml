@@ -26,12 +26,6 @@ jobs:
       - name: Run Puppeteer to collect download links
         run: node scrape-itch-downloads.js
 
-      - name: Prepare download folder
-        run: mkdir -p downloads
-
-      - name: Download all files
-        run: bash download.sh
-
       - name: Upload to release (each file separately)
         uses: softprops/action-gh-release@v2
         with:
