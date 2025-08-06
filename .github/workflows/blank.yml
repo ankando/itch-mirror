@@ -38,5 +38,5 @@ jobs:
       - name: Release
         uses: actions/upload-artifact@v4.6.2
         with:
-          name: ${{ env.RELEASE_VERSION }}
+          name: itch-mirror
           path: builds/anuke/mindustry/files
