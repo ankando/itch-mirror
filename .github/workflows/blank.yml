@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install System Dependencies
         run: |
@@ -64,14 +64,16 @@ jobs:
             xdg-utils
 
       - name: Install Puppeteer
-        run: npm install puppeteer@21.7.0  # 使用稳定版本
+        run: npm install puppeteer
 
       - name: Run Scraper
         run: node scrape-itch-downloads.js
         timeout-minutes: 20
 
-      - name: Upload Assets
-        uses: actions/upload-artifact@v3
+      - name: Upload to release (each file separately)
+        uses: softprops/action-gh-release@v2
         with:
-          name: mindustry-builds
-          path: downloads/
+          tag_name: itch-mirror
+          files: downloads/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
