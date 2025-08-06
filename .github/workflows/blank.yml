@@ -2,88 +2,55 @@ name: Mirror Mindustry Itch Builds
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *'  # 每天 UTC 0 点
   workflow_dispatch:
   push:
     paths:
-      - '**.js'
       - '.github/workflows/*.yml'
 
 jobs:
   mirror:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Cache npm dependencies
-        uses: actions/cache@v3
-        id: npm-cache
-        with:
-          path: |
-            ~/.npm
-            node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v3
-        id: playwright-cache
-        with:
-          path: |
-            ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install Minimal Dependencies
+      - name: Install itchio-downloader
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ca-certificates \
-            fonts-liberation \
-            libnss3 \
-            libgbm1 \
-            libasound2 \
-            libx11-xcb1 \
-            libxcomposite1 \
-            libxdamage1 \
-            libxfixes3 \
-            libxrandr2 \
-            libxshmfence1
-
-      - name: Install Puppeteer with Chrome
-        run: |
-          # 仅在缓存未命中时安装
-          if [[ "${{ steps.npm-cache.outputs.cache-hit }}" != 'true' ]]; then
-            npm ci
-          fi
-          
-          # 仅在浏览器缓存未命中时安装 Chrome
-          if [[ "${{ steps.playwright-cache.outputs.cache-hit }}" != 'true' ]]; then
-            npx playwright install chrome
-          fi
+          # 下载最新版本并安装到 PATH
+          LATEST_VERSION=$(curl -s "https://api.github.com/repos/BraedonWooding/itch-downloader/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          DOWNLOAD_URL="https://github.com/BraedonWooding/itch-downloader/releases/download/$LATEST_VERSION/itch-downloader-x86_64-unknown-linux-gnu"
+          curl -L -o itch-downloader "$DOWNLOAD_URL"
+          chmod +x itch-downloader
+          sudo mv itch-downloader /usr/local/bin/
 
       - name: Create Downloads Directory
         run: mkdir -p downloads
 
-      - name: Run Scraper
-        run: node scrape-itch-downloads.js
-        timeout-minutes: 20
+      - name: Download Mindustry Builds
         env:
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: true
-          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+          ITCH_API_KEY: ${{ secrets.ITCH_API_KEY }}  # 需要在仓库设置中添加此 secret
+        run: |
+          itch-downloader dl \
+            --author "anuke" \
+            --title "Mindustry" \
+            --output downloads \
+            --max-concurrent 4
 
-      - name: Upload to release
+      - name: Compress Downloads
+        run: |
+          tar czvf mindustry-builds-$(date +%Y%m%d).tar.gz downloads/
+          ls -lh *.tar.gz
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: itch-mirror-${{ github.run_id }}
-          files: downloads/*
+          files: mindustry-builds-*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup
+        run: |
+          rm -rf downloads/
+          rm -f mindustry-builds-*.tar.gz
