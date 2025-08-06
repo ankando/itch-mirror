@@ -33,27 +33,9 @@ jobs:
       - name: check downloaded files
         run: |
              ls -R builds
-             cp -r builds /tmp/builds
 
-      - name: Prepare mirror branch
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-
-          git fetch origin tag itch-mirror --depth=1 || true
-          git checkout --orphan temp-mirror
-
-          git clean -fdx
-          git reset --hard
-          cp -r /tmp/builds .
-          cp builds/anuke/mindustry/files/* ./
-          rm -rf *32-bit*
-          rm -rf builds
-
-
-      - name: Commit and push to tag
-        run: |
-          git add .
-          git commit -m "Mirror update: $(date -u)"
-          git tag -f itch-mirror
-          git push origin --force tag itch-mirror
+      - name: Release
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: ${{ env.RELEASE_VERSION }}
+          path: build/anuke/mindustry/files
