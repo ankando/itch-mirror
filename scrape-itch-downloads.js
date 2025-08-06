@@ -9,10 +9,9 @@ const path = require('path');
   });
 
   const page = await browser.newPage();
-
-  // 捕获所有下载链接
   const downloadLinks = new Set();
 
+  // 监听资源请求，捕捉真实文件链接
   page.on('request', (request) => {
     const url = request.url();
     if (url.match(/\.(zip|jar|apk|exe|tar\.gz|dmg)(\?|$)/)) {
@@ -21,42 +20,40 @@ const path = require('path');
     }
   });
 
-  console.log('Opening itch purchase page...');
+  console.log('Opening purchase page...');
   await page.goto('https://anuke.itch.io/mindustry/purchase?initiator=mobile', {
-    waitUntil: 'networkidle2'
+    waitUntil: 'networkidle2',
   });
 
-  console.log('Clicking "No thanks, take me to downloads"...');
+  console.log('Clicking "No thanks" button...');
   await page.waitForSelector('a.direct_download_btn');
   await page.click('a.direct_download_btn');
 
   console.log('Waiting for download buttons...');
   await page.waitForSelector('a.download_btn');
 
-  // 点击所有下载按钮
-  const downloadButtons = await page.$$('a.download_btn');
-  console.log(`Found ${downloadButtons.length} download buttons.`);
+  const buttons = await page.$$('a.download_btn');
+  console.log(`Found ${buttons.length} download buttons.`);
 
-  for (let i = 0; i < downloadButtons.length; i++) {
-    const btn = downloadButtons[i];
+  for (let i = 0; i < buttons.length; i++) {
+    console.log(`Clicking download button ${i + 1}...`);
     try {
-      console.log(`Clicking download button ${i + 1}...`);
-      await btn.click();
-      await page.waitForTimeout(3000); // 等待下载触发
+      await buttons[i].click();
+      await new Promise(resolve => setTimeout(resolve, 3000)); // 替代 waitForTimeout
     } catch (e) {
       console.warn(`Failed to click button ${i + 1}:`, e);
     }
   }
 
-  // 写入下载脚本
   fs.writeFileSync(
     'download.sh',
     Array.from(downloadLinks)
       .map((url, i) => `curl -L "${url}" -o downloads/file${i + 1}${path.extname(url.split('?')[0])}`)
-      .join('\n')
+      .join('\n'),
+    'utf8'
   );
 
-  await browser.close();
+  console.log(`Saved ${downloadLinks.size} download URLs to download.sh`);
 
-  console.log('Done. Collected download links:', downloadLinks.size);
+  await browser.close();
 })();
