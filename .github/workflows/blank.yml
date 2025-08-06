@@ -20,7 +20,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: 'npm'
+
+      - name: Install Puppeteer
+        run: npm install puppeteer
 
       - name: Install System Dependencies
         run: |
