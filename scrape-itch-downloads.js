@@ -34,8 +34,9 @@ const safeWait = async (page, selector, timeout = 10000) => {
   try {
     const page = await browser.newPage();
     
-    // 设置下载行为
-    await page._client.send('Page.setDownloadBehavior', {
+    // 修复点：使用正确的 CDP 方法设置下载行为
+    const client = await page.target().createCDPSession();
+    await client.send('Page.setDownloadBehavior', {
       behavior: 'allow',
       downloadPath: downloadPath
     });
@@ -54,6 +55,7 @@ const safeWait = async (page, selector, timeout = 10000) => {
 
     // 处理可能的弹窗
     if (await safeWait(page, 'a.direct_download_btn')) {
+      console.log('Clicking "No thanks" button...');
       await page.click('a.direct_download_btn');
     }
 
@@ -62,19 +64,26 @@ const safeWait = async (page, selector, timeout = 10000) => {
       const buttons = await page.$$('a.download_btn');
       console.log(`Found ${buttons.length} download options`);
 
+      // 逐个点击下载按钮
       for (let i = 0; i < buttons.length; i++) {
         console.log(`Downloading file ${i + 1}/${buttons.length}`);
         await buttons[i].click();
-        await new Promise(resolve => setTimeout(resolve, 5000)); // 简单等待
+        
+        // 等待文件开始下载
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }
+
+    // 等待所有下载完成
+    console.log('Waiting for downloads to complete...');
+    await new Promise(resolve => setTimeout(resolve, 15000));
 
     // 验证下载结果
     const files = fs.readdirSync(downloadPath);
     if (files.length === 0) {
       throw new Error('No files downloaded!');
     }
-    console.log(`Download completed. Files saved in ${downloadPath}`);
+    console.log(`Download completed. ${files.length} files saved in ${downloadPath}`);
 
   } catch (error) {
     console.error('Scraping failed:', error);
