@@ -9,15 +9,7 @@ const path = require('path');
   });
 
   const page = await browser.newPage();
-  const downloadLinks = new Set();
-
-  page.on('request', (request) => {
-    const url = request.url();
-    if (url.match(/\.(zip|jar|apk|exe|tar\.gz|dmg)(\?|$)/)) {
-      console.log('Detected download:', url);
-      downloadLinks.add(url);
-    }
-  });
+  const downloadLinks = new Map();
 
   console.log('Opening purchase page...');
   await page.goto('https://anuke.itch.io/mindustry/purchase?initiator=mobile', {
@@ -30,31 +22,32 @@ const path = require('path');
 
   console.log('Waiting for download buttons...');
   await page.waitForSelector('a.download_btn');
-  const buttonsCount = (await page.$$('a.download_btn')).length;
-  console.log(`Found ${buttonsCount} download buttons.`);
 
-  for (let i = 0; i < buttonsCount; i++) {
-    const buttons = await page.$$('a.download_btn');
-    const button = buttons[i];
-    if (!button) continue;
+  // 提取页面上所有含 href 的按钮，并过滤出真实下载链接
+  const links = await page.$$eval('a.download_btn', anchors =>
+    anchors
+      .map(a => {
+        const href = a.getAttribute('href');
+        const text = a.innerText.trim();
+        return {
+          href,
+          filename: href?.split('/').pop()?.split('?')[0] || text || 'downloaded.file',
+        };
+      })
+      .filter(a => a.href && /\.(zip|jar|apk|exe|tar\.gz|dmg)$/.test(a.href.split('?')[0]))
+  );
 
-    console.log(`Clicking download button ${i + 1}...`);
-    try {
-      await button.click();
-      await new Promise(resolve => setTimeout(resolve, 3000));
-    } catch (e) {
-      console.warn(`Failed to click button ${i + 1}:`, e);
-    }
+  for (const { href, filename } of links) {
+    console.log('Found download:', href, '→', filename);
+    downloadLinks.set(href, filename);
   }
 
-  // 保存为 download.sh
-  const lines = Array.from(downloadLinks).map((url, i) => {
-    const ext = path.extname(url.split('?')[0]);
-    return `curl -L "${url}" -o downloads/file${i + 1}${ext}`;
-  });
+  // 写入 download.sh
+  const lines = Array.from(downloadLinks.entries()).map(
+    ([url, filename]) => `curl -L "${url}" -o "downloads/${filename}"`
+  );
 
-  fs.writeFileSync('download.sh', lines.join('\n'), 'utf8');
-
+  fs.writeFileSync('download.sh', lines.join('\n') + '\n', 'utf8');
   console.log(`Saved ${downloadLinks.size} download URLs to download.sh`);
 
   await browser.close();
