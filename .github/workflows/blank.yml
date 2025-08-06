@@ -11,7 +11,7 @@ on:
 
 jobs:
   mirror:
-    runs-on: ubuntu-22.04 # 明确使用旧版LTS系统
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -20,6 +20,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'  # 启用 npm 缓存
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v3
+        id: npm-cache
+        with:
+          path: |
+            ~/.npm
+            node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        id: playwright-cache
+        with:
+          path: |
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install Minimal Dependencies
         run: |
@@ -39,8 +61,15 @@ jobs:
 
       - name: Install Puppeteer with Chrome
         run: |
-          npm install puppeteer@21.7.0
-          npx playwright install chrome
+          # 仅在缓存未命中时安装
+          if [[ "${{ steps.npm-cache.outputs.cache-hit }}" != 'true' ]]; then
+            npm ci
+          fi
+          
+          # 仅在浏览器缓存未命中时安装 Chrome
+          if [[ "${{ steps.playwright-cache.outputs.cache-hit }}" != 'true' ]]; then
+            npx playwright install chrome
+          fi
 
       - name: Create Downloads Directory
         run: mkdir -p downloads
@@ -49,12 +78,13 @@ jobs:
         run: node scrape-itch-downloads.js
         timeout-minutes: 20
         env:
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: true # 使用系统已安装的Chrome
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: true
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
 
-      - name: Upload to release (each file separately)
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: itch-mirror
+          tag_name: itch-mirror-${{ github.run_id }}
           files: downloads/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
