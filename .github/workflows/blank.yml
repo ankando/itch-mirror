@@ -30,8 +30,10 @@ jobs:
             --api-key "${{ secrets.ITCH_API_KEY }}" \
             --download-to builds
             
-      - name: Show downloaded files
-        run: ls -R builds
+      - name: check downloaded files
+        run: |
+             ls -R builds
+             cp -r builds /tmp/builds
 
       - name: Prepare mirror branch
         run: |
@@ -43,11 +45,7 @@ jobs:
 
           git clean -fdx
           git reset --hard
-
-          echo "当前工作目录:"
-          pwd
-          echo "files 目录内容:"
-          ls -l builds/anuke/mindustry/files
+          cp -r /tmp/builds .
 
           if [ -d "builds/anuke/mindustry/files" ] && [ "$(ls -A builds/anuke/mindustry/files)" ]; then
             find builds/anuke/mindustry/files -type f -exec cp "{}" ./ \;
