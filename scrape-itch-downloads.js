@@ -41,7 +41,7 @@ const path = require('path');
     downloadLinks.clear();
     
     await buttons[i].hover();
-    await page.waitForTimeout(500);  // 如果报错，替换为 `await delay(500)`
+    await delay(500)  // 如果报错，替换为 `await delay(500)`
     
     await buttons[i].click();
     
@@ -54,7 +54,7 @@ const path = require('path');
       console.warn(`No download response for button ${i + 1} within timeout`);
     }
     
-    await page.waitForTimeout(1000); // 如果报错，替换为 `await delay(1000)`
+    await delay(1000) // 如果报错，替换为 `await delay(1000)`
   }
 
   const lines = Array.from(downloadLinks).map((url, i) => {
