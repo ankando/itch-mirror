@@ -20,7 +20,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'  # 启用 npm 缓存
 
       - name: Cache npm dependencies
         uses: actions/cache@v3
