@@ -5,57 +5,75 @@ const path = require('path');
 // 自动创建 downloads 文件夹
 const downloadPath = path.resolve('./downloads');
 if (!fs.existsSync(downloadPath)) {
-  fs.mkdirSync(downloadPath);
+  fs.mkdirSync(downloadPath, { recursive: true });
 }
 
-// 封装延迟函数（替代已废弃的 waitForTimeout）
+// 封装延迟函数
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
   const browser = await puppeteer.launch({
-    headless: false, // 设为 false 可观察下载过程
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    headless: "new",
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--single-process'
+    ],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH // 兼容 CI 环境
   });
 
-  const page = await browser.newPage();
-
-  // 设置下载行为（关键！）
-  await page._client.send('Page.setDownloadBehavior', {
-    behavior: 'allow',
-    downloadPath: downloadPath // 指定下载目录
-  });
-
-  // 设置用户代理和视口
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-  await page.setViewport({ width: 1280, height: 800 });
-
-  console.log('Opening purchase page...');
-  await page.goto('https://anuke.itch.io/mindustry/purchase?initiator=mobile', {
-    waitUntil: 'networkidle2',
-    timeout: 60000
-  });
-
-  console.log('Clicking "No thanks" button...');
-  await page.waitForSelector('a.direct_download_btn', { timeout: 10000 });
-  await page.click('a.direct_download_btn');
-
-  console.log('Waiting for download buttons...');
-  await page.waitForSelector('a.download_btn', { timeout: 10000 });
-  const buttons = await page.$$('a.download_btn');
-  console.log(`Found ${buttons.length} download buttons.`);
-
-  // 逐个点击下载按钮
-  for (let i = 0; i < buttons.length; i++) {
-    console.log(`Clicking download button ${i + 1}...`);
-    await buttons[i].hover();
-    await delay(500); // 使用自定义延迟函数
-    await buttons[i].click();
+  try {
+    const page = await browser.newPage();
     
-    // 等待下载完成（根据实际需要调整时间）
-    await delay(10000); // 等待 10 秒
-    console.log(`Download ${i + 1} completed (check ${downloadPath})`);
-  }
+    // 设置下载行为
+    await page._client.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: downloadPath
+    });
 
-  console.log('All downloads finished. Closing browser...');
-  await browser.close();
+    // 反检测配置
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
+
+    console.log('Navigating to purchase page...');
+    await page.goto('https://anuke.itch.io/mindustry/purchase?initiator=mobile', {
+      waitUntil: 'networkidle2',
+      timeout: 30000
+    });
+
+    console.log('Bypassing donation prompt...');
+    await page.waitForSelector('a.direct_download_btn', { timeout: 10000 });
+    await page.click('a.direct_download_btn');
+
+    console.log('Locating download buttons...');
+    await page.waitForSelector('a.download_btn', { timeout: 15000 });
+    const buttons = await page.$$('a.download_btn');
+    console.log(`Found ${buttons.length} download variants`);
+
+    // 并行下载（限制并发数）
+    const MAX_CONCURRENT = 3;
+    for (let i = 0; i < buttons.length; i += MAX_CONCURRENT) {
+      const batch = buttons.slice(i, i + MAX_CONCURRENT);
+      await Promise.all(batch.map(async (btn, idx) => {
+        const pos = i + idx + 1;
+        console.log(`[${pos}/${buttons.length}] Initiating download...`);
+        await btn.click();
+        await delay(8000); // 等待下载开始
+      }));
+      await delay(15000); // 等待批次完成
+    }
+
+    console.log('Verifying downloads...');
+    const downloadedFiles = fs.readdirSync(downloadPath);
+    if (downloadedFiles.length === 0) {
+      throw new Error('No files were downloaded!');
+    }
+    console.log(`Successfully downloaded ${downloadedFiles.length} files`);
+    
+  } finally {
+    await browser.close();
+  }
 })();
