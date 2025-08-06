@@ -34,9 +34,33 @@ jobs:
         run: |
              ls -R builds
              rm -rf builds/anuke/mindustry/files/*32-bit*
+             echo "version=itch-mirror" >> $GITHUB_OUTPUT
 
-      - name: Release
-        uses: actions/upload-artifact@v4.6.2
+      - name: Check if remote tag exists
+        id: check_tag
+        run: |
+          TAG="v${{ steps.get_version.outputs.version }}"
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG$"; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create tag if not exists
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          TAG="v${{ steps.get_version.outputs.version }}"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: itch-mirror
-          path: builds/anuke/mindustry/files
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Release v${{ steps.get_version.outputs.version }}
+          files: build/libs/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
