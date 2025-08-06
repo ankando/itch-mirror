@@ -5,13 +5,16 @@ const path = require('path');
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
   const page = await browser.newPage();
   const downloadLinks = new Set();
 
-  // 监听下载请求
+  // 设置用户代理模拟真实浏览器
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+  
+  // 监听响应事件捕获下载链接
   page.on('response', async (response) => {
     const url = response.url();
     if (url.match(/\.(zip|jar|apk|exe|tar\.gz|dmg)(\?|$)/)) {
@@ -39,31 +42,28 @@ const path = require('path');
   for (let i = 0; i < buttons.length; i++) {
     console.log(`Clicking download button ${i + 1}...`);
     
-    // 点击按钮前清除之前的下载链接
+    // 清除之前的下载链接集合
     downloadLinks.clear();
+    
+    // 模拟鼠标悬停
+    await buttons[i].hover();
+    await page.waitForTimeout(500);
     
     // 点击按钮
     await buttons[i].click();
     
-    // 等待可能的下载请求
+    // 等待可能的下载响应
     try {
       await page.waitForResponse(
         response => response.url().match(/\.(zip|jar|apk|exe|tar\.gz|dmg)(\?|$)/), 
-        {timeout: 5000}
+        {timeout: 10000}
       );
     } catch (e) {
       console.warn(`No download response for button ${i + 1} within timeout`);
     }
     
-    // 给页面一点时间处理
+    // 等待页面处理
     await page.waitForTimeout(1000);
-    
-    // 如果有捕获到下载链接，打印出来
-    if (downloadLinks.size > 0) {
-      console.log(`Captured ${downloadLinks.size} download links for button ${i + 1}`);
-    } else {
-      console.warn(`No download links captured for button ${i + 1}`);
-    }
   }
 
   // 保存为 download.sh
