@@ -85,8 +85,7 @@ jobs:
           tag_name: itch-mirror-$(date +%Y%m%d)
           prerelease: false
           files: |
-            mindustry-builds-*.tar.gz
-            downloads/*.log
+            downloads/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
