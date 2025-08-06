@@ -33,6 +33,7 @@ jobs:
       - name: check downloaded files
         run: |
              ls -R builds
+             rm build/anuke/mindustry/files/*32-bit*
 
       - name: Release
         uses: actions/upload-artifact@v4.6.2
