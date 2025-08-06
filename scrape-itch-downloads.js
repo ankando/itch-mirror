@@ -2,25 +2,33 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-// 自动创建 downloads 文件夹
+// 自动创建目录
 const downloadPath = path.resolve('./downloads');
 if (!fs.existsSync(downloadPath)) {
   fs.mkdirSync(downloadPath, { recursive: true });
 }
 
-// 封装延迟函数
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// 安全等待函数
+const safeWait = async (page, selector, timeout = 10000) => {
+  try {
+    await page.waitForSelector(selector, { timeout });
+    return true;
+  } catch (e) {
+    console.warn(`Selector ${selector} not found`);
+    return false;
+  }
+};
 
 (async () => {
   const browser = await puppeteer.launch({
-    headless: "new",
+    headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--single-process'
     ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH // 兼容 CI 环境
+    executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome'
   });
 
   try {
@@ -32,47 +40,45 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       downloadPath: downloadPath
     });
 
-    // 反检测配置
+    // 反自动化检测
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
 
-    console.log('Navigating to purchase page...');
-    await page.goto('https://anuke.itch.io/mindustry/purchase?initiator=mobile', {
-      waitUntil: 'networkidle2',
+    console.log('Loading purchase page...');
+    await page.goto('https://anuke.itch.io/mindustry/purchase', {
+      waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
-    console.log('Bypassing donation prompt...');
-    await page.waitForSelector('a.direct_download_btn', { timeout: 10000 });
-    await page.click('a.direct_download_btn');
-
-    console.log('Locating download buttons...');
-    await page.waitForSelector('a.download_btn', { timeout: 15000 });
-    const buttons = await page.$$('a.download_btn');
-    console.log(`Found ${buttons.length} download variants`);
-
-    // 并行下载（限制并发数）
-    const MAX_CONCURRENT = 3;
-    for (let i = 0; i < buttons.length; i += MAX_CONCURRENT) {
-      const batch = buttons.slice(i, i + MAX_CONCURRENT);
-      await Promise.all(batch.map(async (btn, idx) => {
-        const pos = i + idx + 1;
-        console.log(`[${pos}/${buttons.length}] Initiating download...`);
-        await btn.click();
-        await delay(8000); // 等待下载开始
-      }));
-      await delay(15000); // 等待批次完成
+    // 处理可能的弹窗
+    if (await safeWait(page, 'a.direct_download_btn')) {
+      await page.click('a.direct_download_btn');
     }
 
-    console.log('Verifying downloads...');
-    const downloadedFiles = fs.readdirSync(downloadPath);
-    if (downloadedFiles.length === 0) {
-      throw new Error('No files were downloaded!');
+    console.log('Finding download links...');
+    if (await safeWait(page, 'a.download_btn', 15000)) {
+      const buttons = await page.$$('a.download_btn');
+      console.log(`Found ${buttons.length} download options`);
+
+      for (let i = 0; i < buttons.length; i++) {
+        console.log(`Downloading file ${i + 1}/${buttons.length}`);
+        await buttons[i].click();
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 简单等待
+      }
     }
-    console.log(`Successfully downloaded ${downloadedFiles.length} files`);
-    
+
+    // 验证下载结果
+    const files = fs.readdirSync(downloadPath);
+    if (files.length === 0) {
+      throw new Error('No files downloaded!');
+    }
+    console.log(`Download completed. Files saved in ${downloadPath}`);
+
+  } catch (error) {
+    console.error('Scraping failed:', error);
+    process.exit(1);
   } finally {
     await browser.close();
   }
