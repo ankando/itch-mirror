@@ -35,24 +35,26 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          # Clean workspace
-          rm -rf .git/index
+          # Clean untracked files so orphan branch works
+          git clean -fdx
+
+          # Create orphan branch (no history)
           git checkout --orphan temp-mirror
 
-          # Remove everything from index and working dir
+          # Remove all files from index
           git rm -rf . || true
 
-          # Copy new files into repo root
+          # Copy downloaded files to root
           cp -r builds/anuke/mindustry/files/* ./
 
-          # Commit new files
+          # Commit and push tag
           git add .
           git commit -m "Update itch-mirror from Itch.io"
 
-          # Delete old tag locally and remotely (optional but ensures cleanliness)
+          # Delete old tag (if any)
           git tag -d itch-mirror || true
           git push origin :refs/tags/itch-mirror || true
 
-          # Create new tag and push
+          # Create and push new tag
           git tag itch-mirror
           git push origin itch-mirror --force
