@@ -41,8 +41,24 @@ jobs:
           git fetch origin tag itch-mirror --depth=1 || true
           git checkout --orphan temp-mirror
 
-          rm -rf *
-          cp builds/anuke/mindustry/files/* ./
+          git clean -fdx
+          git reset --hard
+
+          echo "当前工作目录:"
+          pwd
+          echo "files 目录内容:"
+          ls -l builds/anuke/mindustry/files
+
+          if [ -d "builds/anuke/mindustry/files" ] && [ "$(ls -A builds/anuke/mindustry/files)" ]; then
+            find builds/anuke/mindustry/files -type f -exec cp "{}" ./ \;
+          else
+            echo "❌ No files to copy"
+            exit 1
+          fi
+
+          echo "This is a mirror of Mindustry builds from Itch.io" > README.md
+
+
 
       - name: Commit and push to tag
         run: |
