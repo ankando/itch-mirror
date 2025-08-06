@@ -33,10 +33,10 @@ jobs:
       - name: check downloaded files
         run: |
              ls -R builds
-             rm build/anuke/mindustry/files/*32-bit*
+             rm -rf builds/anuke/mindustry/files/*32-bit*
 
       - name: Release
         uses: actions/upload-artifact@v4.6.2
         with:
           name: ${{ env.RELEASE_VERSION }}
-          path: build/anuke/mindustry/files
+          path: builds/anuke/mindustry/files
