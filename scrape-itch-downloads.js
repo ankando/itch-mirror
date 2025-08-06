@@ -1,81 +1,80 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
+const path = require('path');
 
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox'],
   });
+
   const page = await browser.newPage();
+  const downloadLinks = new Set();
 
-  // 存储 {filename => downloadUrl}
-  const downloads = new Map();
-
-  // 监听所有请求，找到符合下载链接的
-  page.on('request', request => {
-    const url = request.url();
-    // 你给的示例下载链接格式示意，匹配特征可调整
-    if (url.includes('itchio-mirror') && url.includes('archive-default')) {
-      console.log('Captured download URL:', url);
-      // 先放到数组后面再关联文件名
-      downloads.set('pending', url);
+  // 监听下载请求
+  page.on('response', async (response) => {
+    const url = response.url();
+    if (url.match(/\.(zip|jar|apk|exe|tar\.gz|dmg)(\?|$)/)) {
+      console.log('Detected download:', url);
+      downloadLinks.add(url);
     }
   });
 
-  console.log('Opening page...');
-  await page.goto('https://anuke.itch.io/mindustry/purchase?initiator=mobile', { waitUntil: 'networkidle2' });
+  console.log('Opening purchase page...');
+  await page.goto('https://anuke.itch.io/mindustry/purchase?initiator=mobile', {
+    waitUntil: 'networkidle2',
+    timeout: 60000
+  });
 
   console.log('Clicking "No thanks" button...');
-  await page.waitForSelector('a.direct_download_btn');
+  await page.waitForSelector('a.direct_download_btn', {timeout: 10000});
   await page.click('a.direct_download_btn');
 
-  await page.waitForTimeout(3000);
-
-  // 获取所有下载文件名和按钮句柄
-  const entries = await page.$$eval('div.upload', nodes => nodes.map(node => {
-    const name = node.querySelector('.upload_name .name')?.textContent.trim() || 'unknown.file';
-    return name;
-  }));
-
+  console.log('Waiting for download buttons...');
+  await page.waitForSelector('a.download_btn', {timeout: 10000});
   const buttons = await page.$$('a.download_btn');
+  console.log(`Found ${buttons.length} download buttons.`);
 
+  // 逐个点击下载按钮并等待下载请求
   for (let i = 0; i < buttons.length; i++) {
-    const filename = entries[i] || `file${i + 1}`;
-    console.log(`Clicking download button ${i + 1} for file: ${filename}`);
-
-    // 清空旧的 pending 下载链接
-    downloads.delete('pending');
-
+    console.log(`Clicking download button ${i + 1}...`);
+    
+    // 点击按钮前清除之前的下载链接
+    downloadLinks.clear();
+    
+    // 点击按钮
+    await buttons[i].click();
+    
+    // 等待可能的下载请求
     try {
-      await buttons[i].click();
+      await page.waitForResponse(
+        response => response.url().match(/\.(zip|jar|apk|exe|tar\.gz|dmg)(\?|$)/), 
+        {timeout: 5000}
+      );
     } catch (e) {
-      console.warn(`Failed clicking button ${i + 1}`, e);
-      continue;
+      console.warn(`No download response for button ${i + 1} within timeout`);
     }
-
-    // 等几秒让下载请求发起
-    await page.waitForTimeout(3000);
-
-    // 读取刚捕获的下载链接
-    const downloadUrl = downloads.get('pending');
-    if (downloadUrl) {
-      downloads.set(filename, downloadUrl);
-      downloads.delete('pending');
-      console.log(`Captured URL for ${filename}: ${downloadUrl}`);
+    
+    // 给页面一点时间处理
+    await page.waitForTimeout(1000);
+    
+    // 如果有捕获到下载链接，打印出来
+    if (downloadLinks.size > 0) {
+      console.log(`Captured ${downloadLinks.size} download links for button ${i + 1}`);
     } else {
-      console.warn(`No download URL captured for ${filename}`);
+      console.warn(`No download links captured for button ${i + 1}`);
     }
   }
 
-  // 生成下载脚本
-  const lines = [];
-  for (const [filename, url] of downloads) {
-    if (filename === 'pending') continue;
-    lines.push(`curl -L "${url}" -o "downloads/${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"`);
-  }
+  // 保存为 download.sh
+  const lines = Array.from(downloadLinks).map((url, i) => {
+    const ext = path.extname(url.split('?')[0]);
+    return `curl -L "${url}" -o downloads/file${i + 1}${ext}`;
+  });
 
-  fs.writeFileSync('download.sh', lines.join('\n') + '\n');
-  console.log(`Saved ${lines.length} download URLs to download.sh`);
+  fs.writeFileSync('download.sh', lines.join('\n'), 'utf8');
+
+  console.log(`Saved ${downloadLinks.size} download URLs to download.sh`);
 
   await browser.close();
 })();
