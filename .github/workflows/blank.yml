@@ -2,59 +2,51 @@ name: Mirror Mindustry Itch Builds
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 每天 UTC 0 点
-  push:
+    - cron: '0 0 * * *'
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/*.yml'
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout (fetch all tags)
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
 
-      - name: Install uv
+      - name: Set up environment
         run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          source $HOME/.local/bin/env
 
-      - name: Download Itch.io Builds
-        env:
-          ITCH_API_KEY: ${{ secrets.ITCH_API_KEY }}
+      - name: Download files from itch.io
         run: |
           mkdir -p builds
-          cd builds
-          uvx itch-dl https://anuke.itch.io/mindustry --api-key "$ITCH_API_KEY"
+          ~/.local/bin/uvx itch-dl https://anuke.itch.io/mindustry \
+            --api-key "${{ secrets.ITCH_API_KEY }}" \
+            --download-to builds
+            
+      - name: Show downloaded files
+        run: ls -R builds
 
-      - name: Prepare git repo for tag push
+      - name: Prepare mirror branch
         run: |
           git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          git config user.email "actions@github.com"
 
-          # Clean untracked files so orphan branch works
-          git clean -fdx
-
-          # Create orphan branch (no history)
+          git fetch origin tag itch-mirror --depth=1 || true
           git checkout --orphan temp-mirror
 
-          # Remove all files from index
-          git rm -rf . || true
+          rm -rf *
+          cp -r builds/* ./
 
-          # Copy downloaded files to root
-          cp -r builds/anuke/mindustry/files/* ./
-
-          # Commit and push tag
+      - name: Commit and push to tag
+        run: |
           git add .
-          git commit -m "Update itch-mirror from Itch.io"
-
-          # Delete old tag (if any)
-          git tag -d itch-mirror || true
-          git push origin :refs/tags/itch-mirror || true
-
-          # Create and push new tag
-          git tag itch-mirror
-          git push origin itch-mirror --force
+          git commit -m "Mirror update: $(date -u)"
+          git tag -f itch-mirror
+          git push origin --force tag itch-mirror
